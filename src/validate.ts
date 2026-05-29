@@ -24,6 +24,7 @@ import { z } from "zod";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const PLUGINS_DIR = path.join(ROOT, "plugins");
+const ROOT_MARKETPLACE = path.join(ROOT, "marketplace.json");
 const CLAUDE_MARKETPLACE = path.join(ROOT, ".claude-plugin", "marketplace.json");
 const CURSOR_MARKETPLACE = path.join(ROOT, ".cursor-plugin", "marketplace.json");
 const CODEX_MARKETPLACE = path.join(ROOT, ".agents", "plugins", "marketplace.json");
@@ -951,6 +952,7 @@ function main(): void {
     validatePowerMdFrontmatter(pluginDir, pluginName, results);
   }
 
+  validateMarketplace(ROOT_MARKETPLACE, pluginNames, "marketplace.json", results);
   validateMarketplace(CLAUDE_MARKETPLACE, pluginNames, ".claude-plugin/marketplace.json", results);
   validateMarketplace(CURSOR_MARKETPLACE, pluginNames, ".cursor-plugin/marketplace.json", results);
   validateCodexMarketplace(CODEX_MARKETPLACE, pluginNames, ".agents/plugins/marketplace.json", results);

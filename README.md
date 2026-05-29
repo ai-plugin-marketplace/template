@@ -13,6 +13,17 @@ highest fidelity each one accepts.
 | [Cursor](https://www.cursor.com/) | Tier 1 (rich plugin) | Supported |
 | [Kiro](https://kiro.dev/) | Tier 2 (standalone export) | Supported |
 | [Vercel Skills CLI](https://sdk.vercel.ai/docs/ai-sdk-core/agents#skills) | Tier 3 (skills only) | Supported |
+| [`npx plugins`](https://www.npmjs.com/package/plugins) | Universal installer | Compatible |
+
+## Installation
+
+Users can install plugins from this marketplace into Claude Code, Cursor, and Codex with a single command:
+
+```bash
+npx plugins add owner/repo
+```
+
+This uses the [open plugin format](https://www.npmjs.com/package/plugins) to auto-detect and install all plugins in the repository.
 
 ## Quick Start
 
@@ -42,6 +53,7 @@ plugins directly from `plugins/<name>/` via their marketplace registries.
 
 ```
 ai-plugin-marketplace-template/
+├── marketplace.json                    # Open plugin format registry (npx plugins)
 ├── .claude-plugin/
 │   └── marketplace.json              # Claude Code marketplace registry
 ├── .cursor-plugin/
@@ -192,7 +204,8 @@ If you prefer to create a plugin without the scaffold script:
 2. Add platform manifests (see the `skill-evaluator` plugin for the Tier 1
    shape).
 3. Add your skills, agents, rules, commands, and hooks.
-4. Update all three root marketplace files:
+4. Update all root marketplace files:
+   - `marketplace.json` (open plugin format / `npx plugins`)
    - `.claude-plugin/marketplace.json`
    - `.cursor-plugin/marketplace.json`
    - `.agents/plugins/marketplace.json`
