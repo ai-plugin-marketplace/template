@@ -168,6 +168,14 @@ describe("parsePluginArg", () => {
   it("returns undefined when `--plugin` has no value", () => {
     expect(parsePluginArg(["--plugin"])).toBeUndefined();
   });
+
+  it("treats `--plugin` followed by another option as missing", () => {
+    expect(parsePluginArg(["--plugin", "--dry-run"])).toBeUndefined();
+  });
+
+  it("treats an empty `--plugin=` as missing", () => {
+    expect(parsePluginArg(["--plugin="])).toBeUndefined();
+  });
 });
 
 describe("loadMarketplace", () => {
@@ -196,6 +204,20 @@ describe("loadMarketplace", () => {
     const r = loadMarketplace(writeTmp("{ not json"));
     expect(r.kind).toBe("invalid");
     if (r.kind === "invalid") expect(r.issues).toMatch(/not valid JSON/);
+  });
+
+  it("reports a read error distinctly from a JSON parse error", () => {
+    // A directory exists at the path but cannot be read as a file (EISDIR),
+    // exercising the read-error branch rather than the JSON-parse branch.
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "codex-accept-test-"));
+    const dirAsFile = path.join(tmpDir, "marketplace.json");
+    fs.mkdirSync(dirAsFile);
+    const r = loadMarketplace(dirAsFile);
+    expect(r.kind).toBe("invalid");
+    if (r.kind === "invalid") {
+      expect(r.issues).toMatch(/could not read file/);
+      expect(r.issues).not.toMatch(/not valid JSON/);
+    }
   });
 
   it("reports invalid for a schema violation", () => {

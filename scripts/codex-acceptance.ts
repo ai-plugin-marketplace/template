@@ -160,9 +160,15 @@ export type LoadResult =
 /** Read + schema-validate the marketplace manifest. No selection logic. */
 export function loadMarketplace(file: string): LoadResult {
   if (!fs.existsSync(file)) return { kind: "missing" };
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (e) {
+    return { kind: "invalid", issues: `could not read file: ${String(e)}` };
+  }
   let raw: unknown;
   try {
-    raw = readJson(file);
+    raw = JSON.parse(text);
   } catch (e) {
     return { kind: "invalid", issues: `not valid JSON: ${String(e)}` };
   }
@@ -211,12 +217,22 @@ export function resolvePluginSelection(
   return { kind: "ambiguous", available };
 }
 
-/** Extract `--plugin <name>` / `--plugin=<name>` from argv. */
+/**
+ * Extract `--plugin <name>` / `--plugin=<name>` from argv. Returns undefined
+ * when the value is missing or empty, or looks like another option (starts with
+ * `-`) — plugin names always start with an alphanumeric, so such a value is a
+ * missing argument, not a plugin.
+ */
 export function parsePluginArg(argv: readonly string[]): string | undefined {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--plugin") return argv[i + 1];
-    if (a?.startsWith("--plugin=")) return a.slice("--plugin=".length);
+    if (a === "--plugin") {
+      const next = argv[i + 1];
+      return next && !next.startsWith("-") ? next : undefined;
+    }
+    if (a?.startsWith("--plugin=")) {
+      return a.slice("--plugin=".length) || undefined;
+    }
   }
   return undefined;
 }
