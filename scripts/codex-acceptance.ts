@@ -42,10 +42,12 @@ const CODEX_HOME = path.join(os.homedir(), ".codex");
 const CACHE_ROOT = path.join(CODEX_HOME, "plugins", "cache");
 const CONFIG_TOML = path.join(CODEX_HOME, "config.toml");
 
-/** Target plugin + marketplace under test. */
-const MARKETPLACE_NAME = "ai-plugin-marketplace";
-const PLUGIN_NAME = "skill-evaluator";
-const PLUGIN_DIR = path.join(ROOT, "plugins", PLUGIN_NAME);
+/**
+ * The marketplace manifest is the single source of truth for the marketplace
+ * name and the plugin(s) under test. Nothing below is hardcoded to the example
+ * plugin, so removing it (delete its directory + marketplace entry) needs no
+ * edits here — `preflight` simply no-ops when no plugins are listed.
+ */
 const MARKETPLACE_FILE = path.join(
   ROOT,
   ".agents",
@@ -130,6 +132,120 @@ const codexMarketplace = z.object({
   plugins: z.array(codexMarketplaceEntry),
 });
 
+export type CodexMarketplace = z.infer<typeof codexMarketplace>;
+
+// ──────────────────────────────────────────────────────────────────────────
+// Target resolution — derive marketplace + plugin from the manifest
+// ──────────────────────────────────────────────────────────────────────────
+
+/** A fully-resolved plugin to act on. */
+export interface ResolvedTarget {
+  marketplaceName: string;
+  pluginName: string;
+  /** Absolute path to the plugin directory. */
+  pluginDir: string;
+}
+
+export type Resolution =
+  | { kind: "ok"; target: ResolvedTarget }
+  | { kind: "empty" }
+  | { kind: "ambiguous"; available: string[] }
+  | { kind: "not-found"; requested: string; available: string[] };
+
+export type LoadResult =
+  | { kind: "ok"; data: CodexMarketplace }
+  | { kind: "missing" }
+  | { kind: "invalid"; issues: string };
+
+/** Read + schema-validate the marketplace manifest. No selection logic. */
+export function loadMarketplace(file: string): LoadResult {
+  if (!fs.existsSync(file)) return { kind: "missing" };
+  let text: string;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch (e) {
+    return { kind: "invalid", issues: `could not read file: ${String(e)}` };
+  }
+  let raw: unknown;
+  try {
+    raw = JSON.parse(text);
+  } catch (e) {
+    return { kind: "invalid", issues: `not valid JSON: ${String(e)}` };
+  }
+  const parsed = codexMarketplace.safeParse(raw);
+  if (!parsed.success) {
+    return {
+      kind: "invalid",
+      issues: parsed.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; "),
+    };
+  }
+  return { kind: "ok", data: parsed.data };
+}
+
+/**
+ * Choose which plugin to act on, given the parsed manifest and an optional
+ * `--plugin <name>` override. Pure (no filesystem access). With a single listed
+ * plugin and no override, that plugin is chosen automatically; with several, an
+ * override is required.
+ */
+export function resolvePluginSelection(
+  marketplace: CodexMarketplace,
+  opts: { pluginArg: string | undefined; root: string },
+): Resolution {
+  const available = marketplace.plugins.map((p) => p.name);
+  const toTarget = (
+    entry: CodexMarketplace["plugins"][number],
+  ): ResolvedTarget => ({
+    marketplaceName: marketplace.name,
+    pluginName: entry.name,
+    pluginDir: path.join(opts.root, entry.source.path),
+  });
+
+  if (opts.pluginArg !== undefined) {
+    const entry = marketplace.plugins.find((p) => p.name === opts.pluginArg);
+    return entry
+      ? { kind: "ok", target: toTarget(entry) }
+      : { kind: "not-found", requested: opts.pluginArg, available };
+  }
+
+  const [only] = marketplace.plugins;
+  if (marketplace.plugins.length === 0) return { kind: "empty" };
+  if (marketplace.plugins.length === 1 && only)
+    return { kind: "ok", target: toTarget(only) };
+  return { kind: "ambiguous", available };
+}
+
+/**
+ * Extract `--plugin <name>` / `--plugin=<name>` from argv. Returns undefined
+ * when the value is missing or empty, or looks like another option (starts with
+ * `-`) — plugin names always start with an alphanumeric, so such a value is a
+ * missing argument, not a plugin.
+ */
+export function parsePluginArg(argv: readonly string[]): string | undefined {
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--plugin") {
+      const next = argv[i + 1];
+      return next && !next.startsWith("-") ? next : undefined;
+    }
+    if (a?.startsWith("--plugin=")) {
+      return a.slice("--plugin=".length) || undefined;
+    }
+  }
+  return undefined;
+}
+
+function formatPluginChoice(headline: string, available: string[]): string {
+  const list = available.map((n) => `    - ${n}`).join("\n");
+  return (
+    `${headline}\n` +
+    `Pick one with --plugin <name>:\n${list || "    (none listed)"}\n\n` +
+    `  e.g.  pnpm run test:codex -- --plugin ${available[0] ?? "<name>"}\n`
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Check harness
 // ──────────────────────────────────────────────────────────────────────────
@@ -138,7 +254,7 @@ interface Check {
   id: string;
   label: string;
   status: "pass" | "fail" | "warn" | "info";
-  detail?: string;
+  detail?: string | undefined;
 }
 
 const checks: Check[] = [];
@@ -182,11 +298,65 @@ function ensureScratch() {
 // Preflight
 // ──────────────────────────────────────────────────────────────────────────
 
-function preflight(): number {
+function preflight(pluginArg: string | undefined): number {
   process.stdout.write("── Codex acceptance: preflight ──\n\n");
 
+  // Resolve the target from the marketplace manifest (single source of truth).
+  const loaded = loadMarketplace(MARKETPLACE_FILE);
+  if (loaded.kind === "missing") {
+    fail(
+      "marketplace-exists",
+      ".agents/plugins/marketplace.json present",
+      MARKETPLACE_FILE,
+    );
+    printChecks();
+    return 1;
+  }
+  if (loaded.kind === "invalid") {
+    pass("marketplace-exists", ".agents/plugins/marketplace.json present");
+    fail(
+      "marketplace-schema",
+      "marketplace.json matches documented schema",
+      loaded.issues,
+    );
+    printChecks();
+    return 1;
+  }
+
+  const resolution = resolvePluginSelection(loaded.data, {
+    pluginArg,
+    root: ROOT,
+  });
+  if (resolution.kind === "empty") {
+    process.stdout.write(
+      "No plugins listed in .agents/plugins/marketplace.json — nothing to test.\n" +
+        "Add one with `pnpm run scaffold`, then re-run `pnpm run test:codex`.\n",
+    );
+    return 0;
+  }
+  if (resolution.kind === "ambiguous") {
+    process.stdout.write(
+      formatPluginChoice(
+        "This marketplace lists multiple plugins.",
+        resolution.available,
+      ),
+    );
+    return 2;
+  }
+  if (resolution.kind === "not-found") {
+    process.stdout.write(
+      formatPluginChoice(
+        `No plugin named "${resolution.requested}" in the marketplace.`,
+        resolution.available,
+      ),
+    );
+    return 2;
+  }
+  const { marketplaceName, pluginName, pluginDir } = resolution.target;
+  info("target", "target", `${marketplaceName} → ${pluginName}`);
+
   // 1. Plugin manifest schema
-  const manifestPath = path.join(PLUGIN_DIR, ".codex-plugin", "plugin.json");
+  const manifestPath = path.join(pluginDir, ".codex-plugin", "plugin.json");
   if (!fs.existsSync(manifestPath)) {
     fail("manifest-exists", "plugin.json present", manifestPath);
   } else {
@@ -202,14 +372,14 @@ function preflight(): number {
       pass("manifest-schema", "plugin.json matches documented schema");
       const m = parsed.data;
 
-      // Name matches directory
-      if (m.name !== PLUGIN_NAME) {
+      // Name matches the marketplace entry
+      if (m.name !== pluginName) {
         fail(
           "manifest-name",
-          "plugin.name matches directory name",
-          `got "${m.name}", expected "${PLUGIN_NAME}"`,
+          "plugin.name matches marketplace entry",
+          `got "${m.name}", expected "${pluginName}"`,
         );
-      } else pass("manifest-name", "plugin.name matches directory name");
+      } else pass("manifest-name", "plugin.name matches marketplace entry");
 
       // Referenced paths exist
       const pathRefs: Array<[string, string | undefined]> = [
@@ -219,7 +389,7 @@ function preflight(): number {
       ];
       for (const [field, ref] of pathRefs) {
         if (!ref) continue;
-        const resolved = path.join(PLUGIN_DIR, ref);
+        const resolved = path.join(pluginDir, ref);
         if (fs.existsSync(resolved)) {
           pass(`path-${field}`, `${field} → ${ref} resolves`);
         } else {
@@ -248,7 +418,7 @@ function preflight(): number {
         ] as const;
         for (const [field, ref] of assetFields) {
           if (!ref) continue;
-          const resolved = path.join(PLUGIN_DIR, ref);
+          const resolved = path.join(pluginDir, ref);
           if (fs.existsSync(resolved)) {
             pass(`asset-${field}`, `interface.${field} asset exists`);
           } else {
@@ -260,7 +430,7 @@ function preflight(): number {
           }
         }
         for (const shot of m.interface.screenshots ?? []) {
-          const resolved = path.join(PLUGIN_DIR, shot);
+          const resolved = path.join(pluginDir, shot);
           if (!fs.existsSync(resolved)) {
             warn(
               `asset-shot-${shot}`,
@@ -273,59 +443,39 @@ function preflight(): number {
     }
   }
 
-  // 2. Marketplace schema
-  if (!fs.existsSync(MARKETPLACE_FILE)) {
-    fail("marketplace-exists", ".agents/plugins/marketplace.json present", MARKETPLACE_FILE);
+  // 2. Marketplace lists this plugin at the right path
+  pass("marketplace-exists", ".agents/plugins/marketplace.json present");
+  pass("marketplace-schema", "marketplace.json matches documented schema");
+  const entry = loaded.data.plugins.find((p) => p.name === pluginName);
+  if (!entry) {
+    fail(
+      "marketplace-lists-plugin",
+      `marketplace lists "${pluginName}"`,
+      "add a plugins[] entry in .agents/plugins/marketplace.json",
+    );
   } else {
-    pass("marketplace-exists", ".agents/plugins/marketplace.json present");
-    const parsed = codexMarketplace.safeParse(readJson(MARKETPLACE_FILE));
-    if (!parsed.success) {
+    pass("marketplace-lists-plugin", `marketplace lists "${pluginName}"`);
+    const resolved = path.join(ROOT, entry.source.path);
+    if (resolved !== pluginDir) {
       fail(
-        "marketplace-schema",
-        "marketplace.json matches documented schema",
-        parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+        "marketplace-path",
+        "source.path resolves to plugin directory",
+        `expected ${pluginDir}, got ${resolved}`,
       );
-    } else {
-      pass("marketplace-schema", "marketplace.json matches documented schema");
-      const entry = parsed.data.plugins.find((p) => p.name === PLUGIN_NAME);
-      if (!entry) {
-        fail(
-          "marketplace-lists-plugin",
-          `marketplace lists "${PLUGIN_NAME}"`,
-          "add a plugins[] entry in .agents/plugins/marketplace.json",
-        );
-      } else {
-        pass("marketplace-lists-plugin", `marketplace lists "${PLUGIN_NAME}"`);
-        const resolved = path.join(ROOT, entry.source.path);
-        if (resolved !== PLUGIN_DIR) {
-          fail(
-            "marketplace-path",
-            "source.path resolves to plugin directory",
-            `expected ${PLUGIN_DIR}, got ${resolved}`,
-          );
-        } else pass("marketplace-path", "source.path resolves to plugin directory");
-
-        if (parsed.data.name !== MARKETPLACE_NAME) {
-          warn(
-            "marketplace-name",
-            `marketplace.name = "${MARKETPLACE_NAME}"`,
-            `got "${parsed.data.name}" — verify prompt uses the correct name`,
-          );
-        } else pass("marketplace-name", `marketplace.name = "${MARKETPLACE_NAME}"`);
-      }
-    }
+    } else pass("marketplace-path", "source.path resolves to plugin directory");
   }
 
   // 3. Pre-install snapshot
   ensureScratch();
   const snapshot = {
     takenAt: new Date().toISOString(),
-    marketplaceName: MARKETPLACE_NAME,
-    pluginName: PLUGIN_NAME,
+    marketplaceName,
+    pluginName,
+    pluginDir: path.relative(ROOT, pluginDir),
     repoRoot: ROOT,
-    cacheBefore: safeListDir(path.join(CACHE_ROOT, MARKETPLACE_NAME)),
-    configTomlBefore: tomlHasPluginEntry(CONFIG_TOML, PLUGIN_NAME, MARKETPLACE_NAME),
-    marketplaceEntryBefore: tomlHasMarketplaceEntry(CONFIG_TOML, MARKETPLACE_NAME),
+    cacheBefore: safeListDir(path.join(CACHE_ROOT, marketplaceName)),
+    configTomlBefore: tomlHasPluginEntry(CONFIG_TOML, pluginName, marketplaceName),
+    marketplaceEntryBefore: tomlHasMarketplaceEntry(CONFIG_TOML, marketplaceName),
   };
   fs.writeFileSync(SNAPSHOT_FILE, JSON.stringify(snapshot, null, 2));
   info(
@@ -337,36 +487,36 @@ function preflight(): number {
   // 4. Register the marketplace in ~/.codex/config.toml
   try {
     const result = registerMarketplaceInConfig(CONFIG_TOML, {
-      name: MARKETPLACE_NAME,
+      name: marketplaceName,
       source: ROOT,
     });
     if (result.action === "added")
-      pass("register", `added [marketplaces.${MARKETPLACE_NAME}] → config.toml`);
+      pass("register", `added [marketplaces.${marketplaceName}] → config.toml`);
     else if (result.action === "updated")
       pass(
         "register",
-        `updated [marketplaces.${MARKETPLACE_NAME}] → config.toml`,
+        `updated [marketplaces.${marketplaceName}] → config.toml`,
         `(was: ${result.previousSource ?? "unknown"})`,
       );
     else
       pass(
         "register",
-        `[marketplaces.${MARKETPLACE_NAME}] already points at this repo`,
+        `[marketplaces.${marketplaceName}] already points at this repo`,
       );
     if (result.backupPath)
       info("register-backup", "config.toml backup", result.backupPath);
   } catch (e) {
     fail(
       "register",
-      `register [marketplaces.${MARKETPLACE_NAME}] in config.toml`,
+      `register [marketplaces.${marketplaceName}] in config.toml`,
       String(e),
     );
   }
 
-  // 4. Emit the introspection prompt
+  // 5. Emit the introspection prompt
   const promptBody = renderIntrospectionPrompt({
-    marketplaceName: MARKETPLACE_NAME,
-    pluginName: PLUGIN_NAME,
+    marketplaceName,
+    pluginName,
     reportFile: REPORT_FILE,
   });
   fs.writeFileSync(PROMPT_FILE, promptBody);
@@ -377,7 +527,7 @@ function preflight(): number {
   );
 
   const ok = printChecks();
-  printManualSteps();
+  printManualSteps(marketplaceName, pluginName);
   return ok ? 0 : 1;
 }
 
@@ -422,11 +572,12 @@ function readTomlSectionString(
   if (i === -1) return null;
   for (let j = i + 1; j < lines.length; j++) {
     const line = lines[j];
+    if (line === undefined) break;
     if (/^\[/.test(line.trim())) break;
     const m = line.match(
       new RegExp(`^\\s*${escapeRegex(key)}\\s*=\\s*"([^"]*)"`),
     );
-    if (m) return m[1];
+    if (m) return m[1] ?? null;
   }
   return null;
 }
@@ -445,8 +596,8 @@ function registerMarketplaceInConfig(
   opts: { name: string; source: string },
 ): {
   action: "added" | "updated" | "unchanged";
-  previousSource?: string;
-  backupPath?: string;
+  previousSource?: string | undefined;
+  backupPath?: string | undefined;
 } {
   const header = `[marketplaces.${opts.name}]`;
   const block = [
@@ -558,7 +709,7 @@ function unregisterMarketplaceFromConfig(
   return { removed, backupPath };
 }
 
-function printManualSteps() {
+function printManualSteps(marketplaceName: string, pluginName: string) {
   const steps = `
 ── Manual steps in the Codex desktop app ──
 
@@ -566,8 +717,8 @@ function printManualSteps() {
   not need to click "Add marketplace".
 
   1.  Open (or restart) Codex.app and go to the  Plugins  panel.
-      Find the marketplace "${MARKETPLACE_NAME}" and click  Install  on
-      "${PLUGIN_NAME}". Wait until the status shows "Installed".
+      Find the marketplace "${marketplaceName}" and click  Install  on
+      "${pluginName}". Wait until the status shows "Installed".
 
   2.  In the Codex composer (a new session in this repo is fine), paste
       the entire contents of:
@@ -668,18 +819,26 @@ function verify(): number {
   }
 
   const snapshot = readJson<{
+    marketplaceName: string;
+    pluginName: string;
+    pluginDir: string;
     cacheBefore: string[] | null;
     configTomlBefore: boolean;
   }>(SNAPSHOT_FILE);
+  // The snapshot records exactly which plugin preflight targeted, so verify
+  // stays consistent even if marketplace.json changed in between.
+  const { marketplaceName, pluginName } = snapshot;
+  const pluginDir = path.join(ROOT, snapshot.pluginDir);
 
   // 1. Cache directory populated
-  const cacheMarketplace = path.join(CACHE_ROOT, MARKETPLACE_NAME);
+  const cacheMarketplace = path.join(CACHE_ROOT, marketplaceName);
   const versionDirs =
-    safeListDir(path.join(cacheMarketplace, PLUGIN_NAME)) ?? [];
-  if (versionDirs.length === 0) {
+    safeListDir(path.join(cacheMarketplace, pluginName)) ?? [];
+  const versionDir = versionDirs[0];
+  if (!versionDir) {
     fail(
       "cache-populated",
-      `cache dir populated at ~/.codex/plugins/cache/${MARKETPLACE_NAME}/${PLUGIN_NAME}/`,
+      `cache dir populated at ~/.codex/plugins/cache/${marketplaceName}/${pluginName}/`,
       "did you click Install in the Codex app?",
     );
   } else {
@@ -691,13 +850,13 @@ function verify(): number {
     // 2. Manifest in cache matches source
     const cachedManifest = path.join(
       cacheMarketplace,
-      PLUGIN_NAME,
-      versionDirs[0],
+      pluginName,
+      versionDir,
       ".codex-plugin",
       "plugin.json",
     );
     const sourceManifest = path.join(
-      PLUGIN_DIR,
+      pluginDir,
       ".codex-plugin",
       "plugin.json",
     );
@@ -726,24 +885,18 @@ function verify(): number {
   }
 
   // 3. config.toml updated
-  const cfgHas = tomlHasPluginEntry(CONFIG_TOML, PLUGIN_NAME, MARKETPLACE_NAME);
+  const cfgHas = tomlHasPluginEntry(CONFIG_TOML, pluginName, marketplaceName);
+  const cfgLabel = `[plugins."${pluginName}@${marketplaceName}"] in config.toml`;
   if (!cfgHas && snapshot.configTomlBefore) {
-    warn(
-      "config-entry",
-      `[plugins."${PLUGIN_NAME}@${MARKETPLACE_NAME}"] in config.toml`,
-      "pre-existing entry removed — double-check",
-    );
+    warn("config-entry", cfgLabel, "pre-existing entry removed — double-check");
   } else if (!cfgHas) {
     fail(
       "config-entry",
-      `[plugins."${PLUGIN_NAME}@${MARKETPLACE_NAME}"] in config.toml`,
+      cfgLabel,
       "no entry found — installation may not have persisted",
     );
   } else {
-    pass(
-      "config-entry",
-      `[plugins."${PLUGIN_NAME}@${MARKETPLACE_NAME}"] in config.toml`,
-    );
+    pass("config-entry", cfgLabel);
   }
 
   // 4. Agent introspection report
@@ -839,38 +992,67 @@ function verify(): number {
 // Cleanup
 // ──────────────────────────────────────────────────────────────────────────
 
+/**
+ * Resolve the marketplace name to clean up. Prefer the snapshot (records what
+ * preflight registered) so cleanup still works after the plugin/marketplace has
+ * been removed from the manifest; fall back to the manifest itself.
+ */
+function resolveMarketplaceNameForCleanup(): string | undefined {
+  if (fs.existsSync(SNAPSHOT_FILE)) {
+    try {
+      const s = readJson<{ marketplaceName?: string }>(SNAPSHOT_FILE);
+      if (s.marketplaceName) return s.marketplaceName;
+    } catch {
+      // fall through to the manifest
+    }
+  }
+  const loaded = loadMarketplace(MARKETPLACE_FILE);
+  return loaded.kind === "ok" ? loaded.data.name : undefined;
+}
+
 function cleanup(): number {
   process.stdout.write("── Codex acceptance: cleanup ──\n\n");
 
-  try {
-    const { removed, backupPath } = unregisterMarketplaceFromConfig(
-      CONFIG_TOML,
-      { name: MARKETPLACE_NAME },
-    );
-    if (removed.length === 0) {
-      info("unregister", "config.toml", "no matching sections found");
-    } else {
-      pass(
-        "unregister",
-        `removed ${removed.length} section(s) from config.toml`,
-        removed.join(", "),
-      );
-      if (backupPath) info("unregister-backup", "config.toml backup", backupPath);
-    }
-  } catch (e) {
-    fail("unregister", "remove config.toml sections", String(e));
-  }
+  const marketplaceName = resolveMarketplaceNameForCleanup();
 
-  const cacheDir = path.join(CACHE_ROOT, MARKETPLACE_NAME);
-  if (fs.existsSync(cacheDir)) {
-    try {
-      fs.rmSync(cacheDir, { recursive: true, force: true });
-      pass("cache-cleared", `removed cache dir ${cacheDir}`);
-    } catch (e) {
-      fail("cache-cleared", "remove cache dir", String(e));
-    }
+  if (!marketplaceName) {
+    info(
+      "unregister",
+      "config.toml",
+      "no marketplace name found (no snapshot, no manifest) — skipping",
+    );
   } else {
-    info("cache-cleared", "cache dir", "already absent");
+    try {
+      const { removed, backupPath } = unregisterMarketplaceFromConfig(
+        CONFIG_TOML,
+        { name: marketplaceName },
+      );
+      if (removed.length === 0) {
+        info("unregister", "config.toml", "no matching sections found");
+      } else {
+        pass(
+          "unregister",
+          `removed ${removed.length} section(s) from config.toml`,
+          removed.join(", "),
+        );
+        if (backupPath)
+          info("unregister-backup", "config.toml backup", backupPath);
+      }
+    } catch (e) {
+      fail("unregister", "remove config.toml sections", String(e));
+    }
+
+    const cacheDir = path.join(CACHE_ROOT, marketplaceName);
+    if (fs.existsSync(cacheDir)) {
+      try {
+        fs.rmSync(cacheDir, { recursive: true, force: true });
+        pass("cache-cleared", `removed cache dir ${cacheDir}`);
+      } catch (e) {
+        fail("cache-cleared", "remove cache dir", String(e));
+      }
+    } else {
+      info("cache-cleared", "cache dir", "already absent");
+    }
   }
 
   for (const f of [SNAPSHOT_FILE, REPORT_FILE, PROMPT_FILE]) {
@@ -889,18 +1071,30 @@ function cleanup(): number {
 // Entry
 // ──────────────────────────────────────────────────────────────────────────
 
-const [, , cmd = "preflight"] = process.argv;
-switch (cmd) {
-  case "preflight":
-    process.exit(preflight());
-  case "verify":
-    process.exit(verify());
-  case "cleanup":
-    process.exit(cleanup());
-  default:
-    process.stderr.write(`unknown subcommand: ${cmd}\n`);
-    process.stderr.write(
-      "usage: codex-acceptance.ts [preflight|verify|cleanup]\n",
-    );
-    process.exit(2);
+function main(argv: readonly string[]): number {
+  const cmd = argv[2] ?? "preflight";
+  const pluginArg = parsePluginArg(argv.slice(3));
+  switch (cmd) {
+    case "preflight":
+      return preflight(pluginArg);
+    case "verify":
+      return verify();
+    case "cleanup":
+      return cleanup();
+    default:
+      process.stderr.write(`unknown subcommand: ${cmd}\n`);
+      process.stderr.write(
+        "usage: codex-acceptance.ts [preflight|verify|cleanup] [--plugin <name>]\n",
+      );
+      return 2;
+  }
+}
+
+// Run the CLI only when executed directly — importing this module (e.g. from
+// tests) must not dispatch or call process.exit.
+if (
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)
+) {
+  process.exit(main(process.argv));
 }
