@@ -16,6 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
 const PLUGINS_DIR = path.join(ROOT, "plugins");
 const TEMPLATES_DIR = path.join(ROOT, "templates");
+const ROOT_MARKETPLACE = path.join(ROOT, "marketplace.json");
 const CLAUDE_MARKETPLACE = path.join(ROOT, ".claude-plugin", "marketplace.json");
 const CURSOR_MARKETPLACE = path.join(ROOT, ".cursor-plugin", "marketplace.json");
 const CODEX_MARKETPLACE = path.join(ROOT, ".agents", "plugins", "marketplace.json");
@@ -328,6 +329,7 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
     tags: [],
   };
 
+  updateMarketplace(ROOT_MARKETPLACE, marketplaceEntry);
   updateMarketplace(CLAUDE_MARKETPLACE, marketplaceEntry);
   updateMarketplace(CURSOR_MARKETPLACE, marketplaceEntry);
 

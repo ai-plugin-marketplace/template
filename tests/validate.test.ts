@@ -573,6 +573,19 @@ function writeMarketplace(
 }
 
 describe("validateMarketplace", () => {
+  it("validates root marketplace.json alongside tool-specific variants", () => {
+    const dir = makeTmpDir();
+    const mpPath = writeMarketplace(dir, "marketplace.json", [
+      { name: "my-plugin", source: "./plugins/my-plugin" },
+    ]);
+
+    const results = freshResult();
+    validateMarketplace(mpPath, ["my-plugin"], "marketplace.json", results);
+
+    expect(results.passed.some((msg) => msg.includes("lists plugin: my-plugin"))).toBe(true);
+    expect(results.failed.every((msg) => !msg.includes("missing plugin"))).toBe(true);
+  });
+
   it("passes the listing check when plugin name and source both match in the same entry", () => {
     const dir = makeTmpDir();
     const mpPath = writeMarketplace(dir, "marketplace.json", [
