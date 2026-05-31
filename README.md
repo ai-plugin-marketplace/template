@@ -1,228 +1,128 @@
-# Universal AI Plugin Marketplace Template
+# AI Plugin Marketplace Template
 
-Author AI assistant plugins once and distribute them to all major platforms at the
+Author AI assistant plugins once and ship them to multiple host platforms —
+**Claude Code, Cursor, Gemini CLI, Kiro, and Vercel Skills CLI** — at the
 highest fidelity each one accepts.
 
-## Supported Platforms
+This repository is a **thin consumer** of the
+[`@ai-plugin-marketplace`](https://www.npmjs.com/package/@ai-plugin-marketplace/cli)
+toolkit. It contains your plugin sources and a dependency on the toolkit —
+nothing else. All validation, scaffolding, and build logic lives in the
+versioned `@ai-plugin-marketplace/*` npm packages, so you upgrade your tooling
+with a single `pnpm up` and never get stranded on a forked copy of the build
+scripts.
 
-| Platform | Fidelity | Status |
-|----------|----------|--------|
-| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Tier 1 (rich plugin) | Supported |
-| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Tier 1 (rich extension) | Supported |
-| [OpenAI Codex](https://developers.openai.com/codex/plugins/build) | Tier 1 (rich plugin) | Supported |
-| [Cursor](https://www.cursor.com/) | Tier 1 (rich plugin) | Supported |
-| [Kiro](https://kiro.dev/) | Tier 2 (standalone export) | Supported |
-| [Vercel Skills CLI](https://sdk.vercel.ai/docs/ai-sdk-core/agents#skills) | Tier 3 (skills only) | Supported |
-| [`npx plugins`](https://www.npmjs.com/package/plugins) | Universal installer | Compatible |
+## Getting started
 
-## Installation
-
-Users can install plugins from this marketplace into Claude Code, Cursor, and Codex with a single command:
+This repo is a GitHub template. Click **"Use this template"** (or run
+`aipm init` in an empty directory to generate the same layout from scratch),
+then:
 
 ```bash
-npx plugins add owner/repo
+pnpm install
 ```
 
-This uses the [open plugin format](https://www.npmjs.com/package/plugins) to auto-detect and install all plugins in the repository.
+> **Note:** `pnpm install` requires the `@ai-plugin-marketplace/*` packages to be
+> published to npm. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## Quick Start
+## Authoring plugins
 
-### Create a new plugin
+### Add a new plugin
 
 ```bash
-pnpm run scaffold my-plugin
+aipm scaffold my-plugin
 ```
 
-### Validate all plugins
+This creates `plugins/my-plugin/` with an `aipm.config.ts` support envelope and
+skeleton manifests for each declared target, and registers the plugin in the
+repo-root marketplace registries.
+
+### Build generated artifacts
 
 ```bash
-pnpm run validate
+aipm build
 ```
 
-### Build standalone exports
+`aipm build` regenerates every toolkit-owned artifact — per-plugin hook JSON
+(`hooks/claude.json`, `hooks/hooks.json`) and the standalone bundles under
+`dist/gemini/` and `dist/kiro/`. Both authored sources and generated outputs are
+committed, so plugins stay browsable on GitHub and pull-request diffs stay
+honest.
+
+### Validate
 
 ```bash
-pnpm run build:standalone
+aipm validate
 ```
 
-This generates standalone directories in `dist/` for platforms that require
-repo-root manifests (Gemini CLI and Kiro). Claude Code, Cursor, and Codex read
-plugins directly from `plugins/<name>/` via their marketplace registries.
+Validation checks the support envelope, every target manifest's schema,
+cross-target name consistency, MCP server-key sync, marketplace registration,
+and freshness (that the committed generated artifacts match what `aipm build`
+would produce).
 
-## Repository Structure
+`package.json` exposes these as `pnpm build`, `pnpm check`, and
+`pnpm scaffold` if you prefer the npm-script entry points.
+
+## The support envelope
+
+Each plugin declares the targets it supports in `plugins/<name>/aipm.config.ts`:
+
+```ts
+import { defineConfig } from '@ai-plugin-marketplace/core';
+
+export default defineConfig({
+  version: '0.1.0',
+  targets: ['claude', 'cursor', 'gemini', 'kiro', 'vercel'],
+});
+```
+
+The toolkit emits artifacts only for declared targets and refuses to validate a
+plugin that carries files for a target outside its envelope. To expand a
+plugin's envelope, run `aipm add-target <plugin> <target>` to scaffold the
+skeleton files for a new target, then fill in the manifest fields.
+
+## Repository structure
 
 ```
-ai-plugin-marketplace-template/
-├── marketplace.json                    # Open plugin format registry (npx plugins)
+.
 ├── .claude-plugin/
-│   └── marketplace.json              # Claude Code marketplace registry
+│   └── marketplace.json     # Claude Code marketplace registry
 ├── .cursor-plugin/
-│   └── marketplace.json              # Cursor marketplace registry
-├── .agents/
-│   └── plugins/
-│       └── marketplace.json          # OpenAI Codex marketplace registry
+│   └── marketplace.json     # Cursor marketplace registry
 ├── plugins/
-│   └── <plugin-name>/                # One directory per plugin
-│       ├── .claude-plugin/
-│       │   └── plugin.json           # Claude Code manifest
-│       ├── .cursor-plugin/
-│       │   └── plugin.json           # Cursor manifest
-│       ├── .codex-plugin/
-│       │   └── plugin.json           # OpenAI Codex manifest
-│       ├── gemini-extension.json     # Gemini CLI manifest
-│       ├── POWER.md                  # Kiro power entry point
-│       ├── GEMINI.md                 # Gemini CLI context file
-│       ├── .mcp.json                 # MCP config (Claude Code / Cursor / Codex)
-│       ├── mcp.json                  # MCP config (Kiro)
-│       ├── skills/                   # SKILL.md files (universal)
-│       ├── agents/                   # Agent definitions (.md)
-│       ├── rules/                    # Rules (.md for Claude, .mdc for Cursor)
-│       ├── steering/                 # Kiro steering files
-│       ├── commands/                 # Commands (.md for Claude/Cursor, .toml for Gemini)
-│       ├── hooks/                    # Hook definitions (claude.yaml source)
-│       ├── README.md
-│       └── LICENSE
-├── src/
-│   ├── validate.ts                   # Validate plugins and manifests
-│   ├── scaffold.ts                   # Create new plugin from template
-│   ├── build-hooks.ts                # Convert hooks YAML → per-target JSON
-│   └── build-standalone.ts           # Generate standalone exports
-├── schemas/                          # JSON Schemas for plugin and marketplace manifests
-├── templates/                        # Templates for scaffolding
-├── dist/                             # Generated standalone repos
+│   └── <plugin-name>/       # One directory per plugin (authored sources)
+│       ├── aipm.config.ts   # Support envelope + plugin version
+│       └── ...              # Manifests, agents, skills, commands, hooks, rules
+├── dist/                    # Generated standalone bundles (committed)
 │   ├── gemini/
 │   └── kiro/
+├── package.json             # Depends on @ai-plugin-marketplace/cli + core
+├── LICENSE
 └── README.md
 ```
 
-## Platform Compatibility Matrix
+## Upgrading the toolkit
 
-| Feature | Claude Code | Cursor | Gemini CLI | Codex | Kiro | Skills CLI |
-|---------|:-----------:|:------:|:----------:|:-----:|:----:|:----------:|
-| Fidelity tier | 1 | 1 | 1 | 1 | 2 | 3 |
-| Skills (SKILL.md) | native | native | native | native | via steering | native |
-| Agents (.md) | native | native | native | — | derived (.kiro/agents) | — |
-| Rules | .md | .mdc | — | — | steering/ | — |
-| Hooks | claude.json | claude.json | hooks.json | — | .kiro/hooks/ | — |
-| Commands | .md | .md/.mdc | .toml | — | — | — |
-| MCP Servers | .mcp.json | .mcp.json | gemini-extension.json | .mcp.json | mcp.json | — |
-| Interface metadata | — | — | — | interface block | POWER.md | — |
-| Marketplace | marketplace.json | marketplace.json | distributed per extension | .agents/plugins/marketplace.json | powers panel | `npx skills find` |
-| Multi-plugin repo | yes | yes | no (per-extension repo) | yes | no | yes |
+Because the build logic lives in npm packages, upgrading is a routine
+dependency bump — no copied scripts to reconcile:
 
-## How It Works
+```bash
+pnpm up @ai-plugin-marketplace/cli @ai-plugin-marketplace/core
+aipm build
+git commit -am "chore: upgrade @ai-plugin-marketplace"
+```
 
-> **Platform terminology note:** Claude Code, Cursor, and Codex call these
-> *plugins*; Kiro calls them *powers*; Gemini CLI calls them *extensions*;
-> Vercel calls them *skills*. This template uses "plugin" as the generic term
-> throughout.
+A minor or patch toolkit upgrade never requires you to change your plugin
+manifests. Major upgrades may ask you to run `aipm migrate`; the CLI tells you
+when.
 
-Each plugin is authored once under `plugins/<name>/` as a superset of every
-component type — `agents/`, `skills/`, `commands/`, `hooks/`, `rules/`,
-`steering/`, and MCP config. The build pipeline emits the **richest native
-representation** each target tool accepts. Components a given target cannot
-express natively are simply absent from its output — they are **not** flattened
-into SKILL.md as a fallback.
-
-### Tier 1: Rich plugins (Claude Code, Cursor, Gemini CLI, OpenAI Codex)
-
-These platforms accept full plugin packages bundling multiple component types.
-
-- **Claude Code and Cursor** share the same internal layout — `skills/`,
-  `agents/`, `hooks/`, `commands/`, `.mcp.json` are identical. Only the
-  manifest wrapper differs (`.claude-plugin/plugin.json` vs
-  `.cursor-plugin/plugin.json`). Plugins are referenced directly from the
-  per-tool root `marketplace.json`.
-- **Gemini CLI** ships as an extension with a richer
-  `gemini-extension.json` (MCP servers, `contextFileName`, `excludeTools`,
-  `settings`) and native auto-discovered directories for `skills/`,
-  `agents/*.md`, `commands/*.toml`, `hooks/hooks.json`, and `policies/*.toml`.
-  `pnpm run build:standalone` writes the self-contained extension to
-  `dist/gemini/<name>/`, with Claude-flavored agent tool names rewritten to
-  Gemini equivalents (`Read` → `read_file`, `Write` → `write_file`, etc.) and
-  the hook YAML converted to Gemini's `hooks.json`.
-- **OpenAI Codex** reads plugins directly from this repo via
-  `./.agents/plugins/marketplace.json`, with each plugin's manifest at
-  `plugins/<name>/.codex-plugin/plugin.json`. The Codex manifest carries an
-  `interface` block (`displayName`, `shortDescription`, `longDescription`,
-  `category`, `capabilities`, `brandColor`, etc.) used to render the plugin in
-  the Codex UI. Codex natively supports skills, MCP, apps, and interface
-  metadata — sub-agents, commands, and hooks are absent from Codex output
-  (they remain available to the Claude/Cursor/Gemini targets).
-
-### Tier 2: Standalone export (Kiro)
-
-Kiro expects its manifest at the repository root. `pnpm run build:standalone`
-copies each plugin into `dist/kiro/<name>/` with POWER.md, `steering/`,
-`skills/`, and auto-converted `.kiro/agents/*.json` configs (generated from the
-Claude agent `.md` files). Kiro reads skills via steering context files rather
-than natively parsing SKILL.md frontmatter, and has no commands concept.
-
-### Tier 3: Lossy fallback (Vercel Skills CLI)
-
-`npx skills add <owner>/<repo>` auto-discovers every `SKILL.md` in the
-repository. Nothing else — sub-agents, commands, hooks, rules, and MCP configs
-are **not** surfaced to Skills CLI consumers. Use this tier when a plugin's
-value is carried entirely by its skills.
-
-## OpenAI Codex
-
-Codex plugins live alongside the other platforms' manifests:
-
-- Per-plugin manifest: `plugins/<name>/.codex-plugin/plugin.json`.
-- Repo-root marketplace: `.agents/plugins/marketplace.json` with entries of the
-  form
-  ```json
-  {
-    "name": "<plugin-name>",
-    "source": { "source": "local", "path": "./plugins/<plugin-name>" },
-    "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" }
-  }
-  ```
-- The `interface` block on the plugin manifest drives Codex UI rendering
-  (`displayName`, `shortDescription`, `longDescription`, `category`,
-  `capabilities`, `brandColor`, `composerIcon`, `logo`, `screenshots`,
-  `defaultPrompt`, `websiteURL`, `privacyPolicyURL`, `termsOfServiceURL`).
-
-After installing a Codex user source pointing at this repo, `codex /plugins`
-will list the plugin with its interface metadata.
-
-## Example Plugin: skill-evaluator
+## Example plugin: skill-evaluator
 
 The included `skill-evaluator` plugin demonstrates the full multi-platform
-pattern end-to-end. It evaluates AI skills across model tiers (opus → sonnet →
-haiku) using blind sub-agent testing.
-
-See [plugins/skill-evaluator/README.md](plugins/skill-evaluator/README.md) for
-details.
-
-## Creating a Plugin Manually
-
-If you prefer to create a plugin without the scaffold script:
-
-1. Create a directory under `plugins/`.
-2. Add platform manifests (see the `skill-evaluator` plugin for the Tier 1
-   shape).
-3. Add your skills, agents, rules, commands, and hooks.
-4. Update all root marketplace files:
-   - `marketplace.json` (open plugin format / `npx plugins`)
-   - `.claude-plugin/marketplace.json`
-   - `.cursor-plugin/marketplace.json`
-   - `.agents/plugins/marketplace.json`
-5. Run `pnpm run validate` to verify everything is correct.
-6. Run `pnpm run build:standalone` to generate Gemini and Kiro exports.
-
-## npm Scripts
-
-| Script | Description |
-|--------|-------------|
-| `pnpm run validate` | Validate all plugins and manifests |
-| `pnpm run scaffold <name>` | Create a new plugin from templates |
-| `pnpm run build:hooks` | Convert `hooks/*.yaml` sources to per-target JSON |
-| `pnpm run build:standalone` | Generate standalone Gemini/Kiro exports |
-| `pnpm run build` | Typecheck + build hooks + validate + build standalone |
-| `pnpm run clean` | Remove dist/ directory |
+pattern end-to-end — it evaluates AI skills across model tiers (opus → sonnet →
+haiku) using blind sub-agent testing. See
+[plugins/skill-evaluator/README.md](plugins/skill-evaluator/README.md).
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

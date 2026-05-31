@@ -146,9 +146,10 @@ vite.config.ts.timestamp-*
 .claude/**/*.local.*
 *.local.*
 
-# Build output (dist/ is committed for consumer install — see .gitattributes)
+# Build output. Toolkit-generated artifacts (dist/ bundles and per-plugin
+# hooks/*.json) are committed for consumer install and the freshness check —
+# see .gitattributes and the @ai-plugin-marketplace build contract.
 dist-ts/
-plugins/*/hooks/*.json
 
 # Scratch & manual-test artifacts
 scratch/

@@ -1,4 +1,5 @@
 ---
+schemaVersion: 0.1.0
 name: skill-evaluator
 description: Evaluate AI skills across model tiers with blind testing and refinement recommendations
 version: 0.0.1
