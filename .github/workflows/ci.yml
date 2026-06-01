@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  ci:
+  CI:
     runs-on: ubuntu-latest
     env:
       CI: "true"
