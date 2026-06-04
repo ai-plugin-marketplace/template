@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "hash": "sha256-eb70c8d690e2b88d591ea3b9f306a52cce9c5001c25cb7a86c786c5a8918998c"
+    }
+  ]
+}

@@ -9,7 +9,7 @@
     "scaffold": "aipm scaffold"
   },
   "devDependencies": {
-    "@ai-plugin-marketplace/cli": "^0.1.1",
-    "@ai-plugin-marketplace/core": "^0.2.0"
+    "@ai-plugin-marketplace/cli": "^0.2.0",
+    "@ai-plugin-marketplace/core": "^0.3.0"
   }
 }
