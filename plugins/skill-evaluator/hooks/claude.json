@@ -7,11 +7,11 @@
     "PostToolUse": [
       {
         "matcher": "Write",
-        "description": "Log evaluation report writes to a structured log file",
+        "description": "Append one JSON object per evaluation-report write to a JSON Lines log",
         "hooks": [
           {
             "type": "command",
-            "command": "if echo \"$TOOL_INPUT\" | grep -q 'evaluation-report'; then echo \"[$(date -u +%Y-%m-%dT%H:%M:%SZ)] Evaluation report written\" >> .evaluation-log.jsonl; fi"
+            "command": "if echo \"$TOOL_INPUT\" | grep -q 'evaluation-report'; then echo \"{\\\"timestamp\\\":\\\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\\\",\\\"event\\\":\\\"evaluation-report-written\\\"}\" >> .evaluation-log.jsonl; fi"
           }
         ]
       }
