@@ -22,8 +22,8 @@ then:
 pnpm install
 ```
 
-> **Note:** `pnpm install` requires the `@ai-plugin-marketplace/*` packages to be
-> published to npm. See [CONTRIBUTING.md](CONTRIBUTING.md).
+The `@ai-plugin-marketplace/*` packages are published to npm, so a fresh
+`pnpm install` resolves them directly. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Authoring plugins
 
@@ -43,11 +43,20 @@ repo-root marketplace registries.
 aipm build
 ```
 
-`aipm build` regenerates every toolkit-owned artifact — per-plugin hook JSON
-(`hooks/claude.json`, `hooks/hooks.json`) and the standalone bundles under
-`dist/gemini/` and `dist/kiro/`. Both authored sources and generated outputs are
-committed, so plugins stay browsable on GitHub and pull-request diffs stay
-honest.
+`aipm build` regenerates every toolkit-owned artifact:
+
+- per-plugin hook JSON (`hooks/claude.json`, `hooks/hooks.json`);
+- the standalone bundles under `dist/gemini/` and `dist/kiro/`;
+- the marketplace registries (`.claude-plugin/marketplace.json`,
+  `.cursor-plugin/marketplace.json`) — generated from `aipm.workspace.ts` plus
+  each plugin's `aipm.config.ts` (see [Marketplace metadata](#marketplace-metadata-and-generated-registries));
+- for a single-plugin marketplace, the **repo-root Gemini extension and Kiro
+  power** (`gemini-extension.json`, `GEMINI.md`, `POWER.md`, `commands/`,
+  `skills/`, `steering/`, `.kiro/`, …) so the repo installs natively into hosts
+  that have no marketplace concept.
+
+Both authored sources and generated outputs are committed, so plugins stay
+browsable on GitHub and pull-request diffs stay honest.
 
 ### Validate
 
@@ -57,8 +66,8 @@ aipm validate
 
 Validation checks the support envelope, every target manifest's schema,
 cross-target name consistency, MCP server-key sync, marketplace registration,
-and freshness (that the committed generated artifacts match what `aipm build`
-would produce).
+and freshness — that the committed generated artifacts (registries, bundles,
+and the repo-root Gemini/Kiro emission) match what `aipm build` would produce.
 
 `package.json` exposes these as `pnpm build`, `pnpm check`, and
 `pnpm scaffold` if you prefer the npm-script entry points.
@@ -81,24 +90,76 @@ plugin that carries files for a target outside its envelope. To expand a
 plugin's envelope, run `aipm add-target <plugin> <target>` to scaffold the
 skeleton files for a new target, then fill in the manifest fields.
 
+## Marketplace metadata and generated registries
+
+Repo-level marketplace metadata lives in `aipm.workspace.ts` at the repo root:
+
+```ts
+import { defineWorkspace } from '@ai-plugin-marketplace/core';
+
+export default defineWorkspace({
+  marketplace: {
+    name: 'ai-plugin-marketplace',
+    owner: { name: 'AI Plugin Marketplace Template' },
+    description: 'Universal AI Plugin Marketplace — author once, distribute to all platforms',
+  },
+});
+```
+
+The **presence of this file opts the repo into generated registries.** Instead
+of hand-maintaining `.claude-plugin/marketplace.json` and
+`.cursor-plugin/marketplace.json`, `aipm build` generates them from the
+workspace metadata plus each plugin's `aipm.config.ts` (its `description` and
+`keywords` become the registry entry's `description` and `tags`). The generated
+registries are committed and freshness-checked like every other artifact.
+
+### Gemini and Kiro: the single-plugin marketplace
+
+Gemini CLI and Kiro have **no marketplace concept** — a repo is installed as one
+extension (Gemini) or one power (Kiro) from its root. So when a marketplace
+exposes **exactly one plugin**, `aipm build` additionally emits that plugin's
+Gemini/Kiro artifacts at the **repo root** (`gemini-extension.json`, `GEMINI.md`,
+`POWER.md`, `commands/`, `skills/`, `steering/`, `.kiro/`), letting the repo
+install natively into those hosts. A sidecar at `.aipm/generated-root.json`
+records exactly which root paths the toolkit owns.
+
+If you add a **second plugin**, the repo can no longer be a single Gemini/Kiro
+artifact: `aipm validate` reports a `single-artifact-host` finding, and you keep
+full Claude/Cursor marketplace support (which can host many plugins) while
+choosing one plugin to expose to Gemini/Kiro. Because the repo root is the
+single Gemini/Kiro artifact, the plugin does **not** carry its own `LICENSE` or
+`README.md` — the repo-root `LICENSE`/`README.md` are canonical and are never
+overwritten by generation.
+
 ## Repository structure
 
 ```
 .
+├── aipm.workspace.ts        # Marketplace metadata (opts into generated registries)
 ├── .claude-plugin/
-│   └── marketplace.json     # Claude Code marketplace registry
+│   └── marketplace.json     # Claude Code registry (GENERATED)
 ├── .cursor-plugin/
-│   └── marketplace.json     # Cursor marketplace registry
+│   └── marketplace.json     # Cursor registry (GENERATED)
 ├── plugins/
 │   └── <plugin-name>/       # One directory per plugin (authored sources)
-│       ├── aipm.config.ts   # Support envelope + plugin version
+│       ├── aipm.config.ts   # Support envelope + version + description/keywords
 │       └── ...              # Manifests, agents, skills, commands, hooks, rules
 ├── dist/                    # Generated standalone bundles (committed)
 │   ├── gemini/
 │   └── kiro/
+│
+│   # Repo-root Gemini/Kiro artifacts — emitted for a single-plugin marketplace
+│   # (GENERATED; tracked in .aipm/generated-root.json):
+├── gemini-extension.json
+├── GEMINI.md
+├── POWER.md
+├── commands/  skills/  steering/  agents/  hooks/  mcp.json  .kiro/
+├── .aipm/
+│   └── generated-root.json  # Records which repo-root paths the toolkit owns
+│
 ├── package.json             # Depends on @ai-plugin-marketplace/cli + core
-├── LICENSE
-└── README.md
+├── LICENSE                  # Canonical — also serves the Gemini/Kiro artifact
+└── README.md                # Canonical — also serves the Gemini/Kiro artifact
 ```
 
 ## Upgrading the toolkit
@@ -119,9 +180,18 @@ when.
 ## Example plugin: skill-evaluator
 
 The included `skill-evaluator` plugin demonstrates the full multi-platform
-pattern end-to-end — it evaluates AI skills across model tiers (opus → sonnet →
-haiku) using blind sub-agent testing. See
-[plugins/skill-evaluator/README.md](plugins/skill-evaluator/README.md).
+pattern end-to-end. Given a skill (`SKILL.md`) and a set of test cases, it:
+
+1. runs the skill with blind test-subject agents at different model tiers
+   (opus → sonnet → haiku);
+2. compares outputs against expected outcomes;
+3. identifies where skill clarity degrades at lower tiers;
+4. generates actionable refinement recommendations.
+
+Invoke it in any host with `/evaluate path/to/SKILL.md path/to/test-cases.json`,
+where each test case is `{ "input": "...", "expectedOutcome": "..." }`. The skill
+definition lives at
+[plugins/skill-evaluator/skills/evaluate-skill/SKILL.md](plugins/skill-evaluator/skills/evaluate-skill/SKILL.md).
 
 ## License
 
