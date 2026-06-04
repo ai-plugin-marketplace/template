@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "paths": [
+    ".kiro/agents/experimenter.json",
+    ".kiro/agents/test-subject.json",
+    "GEMINI.md",
+    "POWER.md",
+    "agents/experimenter.md",
+    "agents/test-subject.md",
+    "commands/evaluate.toml",
+    "gemini-extension.json",
+    "hooks/hooks.json",
+    "mcp.json",
+    "skills/evaluate-skill/SKILL.md",
+    "steering/evaluation-workflow.md"
+  ]
+}

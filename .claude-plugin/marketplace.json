@@ -4,7 +4,6 @@
     "name": "AI Plugin Marketplace Template"
   },
   "metadata": {
-    "version": "0.0.1",
     "description": "Universal AI Plugin Marketplace — author once, distribute to all platforms"
   },
   "plugins": [
@@ -12,7 +11,12 @@
       "name": "skill-evaluator",
       "source": "./plugins/skill-evaluator",
       "description": "Evaluate AI skills across model tiers with blind testing and refinement recommendations",
-      "tags": ["evaluation", "testing", "skills", "model-tiers"]
+      "tags": [
+        "evaluation",
+        "testing",
+        "skills",
+        "model-tiers"
+      ]
     }
   ]
 }

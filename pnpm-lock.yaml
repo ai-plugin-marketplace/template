@@ -9,21 +9,21 @@ importers:
   .:
     devDependencies:
       '@ai-plugin-marketplace/cli':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.1.1
+        version: 0.1.1
       '@ai-plugin-marketplace/core':
-        specifier: ^0.1.0
-        version: 0.1.0
+        specifier: ^0.2.0
+        version: 0.2.0
 
 packages:
 
-  '@ai-plugin-marketplace/cli@0.1.0':
-    resolution: {integrity: sha512-DOoDFaDSZqsGTvxjiByIgQdTFbYBOeet+dee6FDavW8FtDBWKUs9xYc+FuGQPu1G9+ztT5uS9dIcQpdGZbEGaQ==}
+  '@ai-plugin-marketplace/cli@0.1.1':
+    resolution: {integrity: sha512-mEHq89uoplj4LT7JvxGAweR3qnb+6sHk97w+6l02avArJ4+cVUr2K+Fb2WOwVjGYOGO1DD3y8r+hTiJWg6JuJQ==}
     engines: {node: '>=20.0.0'}
     hasBin: true
 
-  '@ai-plugin-marketplace/core@0.1.0':
-    resolution: {integrity: sha512-nUlTv2M/PIq8HtyLgeX9K8boLZJslS/4XrwHyamrgxINAxJOXyljelzYUFP8KqLypZPxfdlsuLILG8wW9LSeiQ==}
+  '@ai-plugin-marketplace/core@0.2.0':
+    resolution: {integrity: sha512-nnD9BZHZnlcw1dm/BzwC98T2QdBxiaeHCIGGvpT5/9DL4BHvrtUaG0KtoPUCLOLtGKgpaZfoulMO9s/DfWlMSA==}
     engines: {node: '>=20.0.0'}
 
   jiti@2.7.0:
@@ -40,11 +40,11 @@ packages:
 
 snapshots:
 
-  '@ai-plugin-marketplace/cli@0.1.0':
+  '@ai-plugin-marketplace/cli@0.1.1':
     dependencies:
-      '@ai-plugin-marketplace/core': 0.1.0
+      '@ai-plugin-marketplace/core': 0.2.0
 
-  '@ai-plugin-marketplace/core@0.1.0':
+  '@ai-plugin-marketplace/core@0.2.0':
     dependencies:
       jiti: 2.7.0
       yaml: 2.9.0
