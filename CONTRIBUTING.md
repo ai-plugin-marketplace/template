@@ -15,6 +15,12 @@ the published versions.
 
 ## Workflow
 
+0. **One-time, right after forking: rename the marketplace.** In `aipm.workspace.ts`,
+   set `marketplace.name` (and `owner`) from the placeholder `my-ai-plugins` to a
+   **unique** name — convention `"<your-handle>-ai-plugins"`. The `name` is the identifier
+   hosts register your marketplace under; leaving a default risks colliding with another
+   marketplace (e.g. the upstream `ai-plugin-marketplace`), which strands plugins. `aipm
+   validate` emits a warning until you change it.
 1. Add or edit a plugin under `plugins/<name>/`. Use `aipm scaffold <name>` to
    create a new one or `aipm add-target <plugin> <target>` to expand an
    existing plugin's support envelope.

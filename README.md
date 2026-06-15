@@ -25,6 +25,15 @@ pnpm install
 The `@ai-plugin-marketplace/*` packages are published to npm, so a fresh
 `pnpm install` resolves them directly. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+> [!IMPORTANT]
+> **Rename your marketplace first.** Open `aipm.workspace.ts` and change
+> `marketplace.name` (and `owner`) from the placeholder `my-ai-plugins` to a
+> **unique** name — convention `"<your-handle>-ai-plugins"`, e.g. `mnorth-ai-plugins`.
+> The `name` is what hosts register your marketplace under; if it collides with another
+> marketplace (such as the upstream `ai-plugin-marketplace`), the second one installed
+> shadows or strands the first's plugins. `aipm validate` warns while the name is still a
+> default. (Scaffolding from scratch with `aipm init --name <name>` sets this for you.)
+
 ## Authoring plugins
 
 ### Add a new plugin
