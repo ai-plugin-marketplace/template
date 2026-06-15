@@ -8,8 +8,13 @@ import { defineWorkspace } from '@ai-plugin-marketplace/core';
  */
 export default defineWorkspace({
   marketplace: {
-    name: 'ai-plugin-marketplace',
-    owner: { name: 'AI Plugin Marketplace Template' },
+    // ⚠️ RENAME THIS before you publish. The marketplace `name` is the identifier hosts register
+    // your marketplace under, so it must be UNIQUE — if two repos share a name, the second one
+    // installed shadows/strands the first's plugins. Do NOT leave the placeholder. Convention:
+    // "<your-handle>-ai-plugins" (e.g. "mnorth-ai-plugins"). `aipm validate` warns while this is
+    // still a default.
+    name: 'my-ai-plugins',
+    owner: { name: 'Your Name' },
     description: 'Universal AI Plugin Marketplace — author once, distribute to all platforms',
   },
 });
