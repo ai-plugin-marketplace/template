@@ -9,6 +9,5 @@
   "keywords": ["evaluation", "testing", "skills", "model-tiers"],
   "skills": ["./skills/evaluate-skill"],
   "agents": ["./agents/experimenter.md", "./agents/test-subject.md"],
-  "commands": ["./commands/evaluate.md"],
-  "hooks": "./hooks/claude.json"
+  "commands": ["./commands/evaluate.md"]
 }
