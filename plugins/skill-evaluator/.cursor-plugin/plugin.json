@@ -10,5 +10,5 @@
   "skills": ["./skills/evaluate-skill"],
   "agents": ["./agents/experimenter.md", "./agents/test-subject.md"],
   "commands": ["./commands/evaluate.md"],
-  "hooks": "./hooks/claude.json"
+  "hooks": "./hooks/cursor.json"
 }
